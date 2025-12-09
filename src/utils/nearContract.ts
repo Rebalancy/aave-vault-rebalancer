@@ -1,5 +1,5 @@
 // NEAR network configuration
-const CONTRACT_ID = 'rebalancer-10.testnet'; // Updated to the new contract with better data
+const CONTRACT_ID = 'rebalancer-abcdefghij-57.testnet'; // Updated to the new contract with better data
 
 // RPC endpoint for the network
 const RPC_URL = 'https://rpc.testnet.near.org'; // Use testnet for now
