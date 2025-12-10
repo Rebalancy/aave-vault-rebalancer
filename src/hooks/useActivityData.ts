@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@apollo/client';
 import { gql } from '@apollo/client';
-import { useTransactionStatus } from '@/contexts/TransactionStatusContext';
+import { useTransactionStatus, StatusMessage } from '@/contexts/TransactionStatusContext';
 import { useMockData } from '@/components/ClientProviders';
 
 // GraphQL query for activity data
@@ -47,7 +47,7 @@ interface UseActivityDataReturn {
 
 export function useActivityData(limit: number = 20): UseActivityDataReturn {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
-  const { messages } = useTransactionStatus();
+  const { messages, persistedTransactions } = useTransactionStatus();
   const { useMock } = useMockData();
   
   const { data, loading, error, refetch } = useQuery(GET_RECENT_ACTIVITY, {
@@ -57,7 +57,7 @@ export function useActivityData(limit: number = 20): UseActivityDataReturn {
   });
 
   // Helper function to format timestamp
-  const formatTimestamp = (timestamp: string): string => {
+  const formatTimestamp = useCallback((timestamp: string): string => {
     const now = new Date();
     const activityTime = new Date(timestamp);
     const diffInMinutes = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60));
@@ -72,46 +72,62 @@ export function useActivityData(limit: number = 20): UseActivityDataReturn {
     if (diffInDays < 7) return `${diffInDays}d ago`;
     
     return activityTime.toLocaleDateString();
-  };
+  }, []);
 
   // Convert transaction status messages to activity entries
-  const getRecentTransactionActivities = (): ActivityEntry[] => {
-    return messages
-      .filter(msg => msg.type === 'success' && msg.txHash)
-      .map((msg) => {
-        const messageText = msg.message.toLowerCase();
-        const isWithdraw = messageText.includes('withdraw');
-        const isApproval = messageText.includes('approval');
-        
-        // Skip approval messages as they're not user-facing activities
-        if (isApproval) return null;
-        
-        // Extract amount from message if possible
-        const amountMatch = msg.message.match(/(\d+(?:\.\d+)?)/);
-        const amount = amountMatch ? parseFloat(amountMatch[1]) : undefined;
-        
-        let type: ActivityEntry['type'] = 'DEPOSIT';
-        let icon = '/deposit.svg';
-        const title = msg.message;
-        
-        if (isWithdraw) {
-          type = 'WITHDRAWAL';
-          icon = '/withdraw.svg';
-        }
-        
-        return {
-          id: `tx_${msg.id}`,
-          type,
-          title,
-          description: 'Recent transaction',
-          amount,
-          transactionHash: msg.txHash,
-          timestamp: new Date(msg.timestamp).toISOString(),
-          icon
-        };
-      })
+  const convertMessageToActivity = useCallback((msg: StatusMessage): ActivityEntry | null => {
+    const messageText = msg.message.toLowerCase();
+    const isWithdraw = messageText.includes('withdraw');
+    const isApproval = messageText.includes('approval');
+    
+    // Skip approval messages as they're not user-facing activities
+    if (isApproval) return null;
+    
+    // Extract amount from message if possible
+    const amountMatch = msg.message.match(/(\d+(?:\.\d+)?)/);
+    const amount = amountMatch ? parseFloat(amountMatch[1]) : undefined;
+    
+    let type: ActivityEntry['type'] = 'DEPOSIT';
+    let icon = '/deposit.svg';
+    const title = msg.message;
+    
+    if (isWithdraw) {
+      type = 'WITHDRAWAL';
+      icon = '/withdraw.svg';
+    }
+    
+    return {
+      id: `tx_${msg.id}`,
+      type,
+      title,
+      description: 'Recent transaction',
+      amount,
+      transactionHash: msg.txHash,
+      timestamp: new Date(msg.timestamp).toISOString(),
+      icon
+    };
+  }, []);
+
+  // Convert transaction status messages to activity entries
+  const getRecentTransactionActivities = useCallback((): ActivityEntry[] => {
+    // Combine active messages and persisted transactions
+    const allTransactions = [
+      ...messages.filter(msg => msg.type === 'success' && msg.txHash),
+      ...persistedTransactions
+    ];
+
+    // Deduplicate by txHash
+    const seen = new Set<string>();
+    const uniqueTransactions = allTransactions.filter(tx => {
+      if (!tx.txHash || seen.has(tx.txHash)) return false;
+      seen.add(tx.txHash);
+      return true;
+    });
+
+    return uniqueTransactions
+      .map(convertMessageToActivity)
       .filter(Boolean) as ActivityEntry[];
-  };
+  }, [messages, persistedTransactions, convertMessageToActivity]);
 
   useEffect(() => {
     if (data?.recentActivity) {
@@ -124,8 +140,16 @@ export function useActivityData(limit: number = 20): UseActivityDataReturn {
       
       const recentTxActivities = getRecentTransactionActivities();
       
-      // Merge and sort by timestamp
-      const allActivities = [...backendActivities, ...recentTxActivities]
+      // Merge and sort by timestamp, deduplicate by txHash
+      const seen = new Set<string>();
+      const allActivities = [...recentTxActivities, ...backendActivities]
+        .filter(activity => {
+          if (activity.transactionHash) {
+            if (seen.has(activity.transactionHash)) return false;
+            seen.add(activity.transactionHash);
+          }
+          return true;
+        })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, limit)
         .map(activity => ({
@@ -145,16 +169,15 @@ export function useActivityData(limit: number = 20): UseActivityDataReturn {
       
       setActivities(recentTxActivities);
     }
-  }, [data, messages, limit]);
+  }, [data, messages, persistedTransactions, limit, formatTimestamp, getRecentTransactionActivities]);
 
   // Override with mock or empty state according to global toggle
   useEffect(() => {
     if (useMock) {
       setActivities(getMockActivityData().slice(0, limit));
-    } else if (!data?.recentActivity || data.recentActivity.length === 0) {
-      setActivities([]);
     }
-  }, [useMock, limit, data]);
+    // Don't clear activities if no backend data - we still have persisted transactions
+  }, [useMock, limit]);
 
   return {
     activities,
