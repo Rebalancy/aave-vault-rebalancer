@@ -243,7 +243,6 @@ export function usePerformanceData() {
         if (dataIsSparse) {
           console.log('📊 Backend data is sparse, generating synthetic performance curves');
           // Generate synthetic curves based on AAVE APY and a slight outperformance
-          const totalDays = backendPerformanceData.length;
           return backendPerformanceData.map((point, index) => {
             // AAVE baseline: compound growth at current APY
             const baselineValue = 1.0 + (dailyBaselineRate * index);
