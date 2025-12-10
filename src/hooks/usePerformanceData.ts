@@ -376,10 +376,14 @@ export function usePerformanceData() {
     totalVaultValue = parseFloat(vaultData.totalAssets);
   }
   
-  // Gains
-  const performance24h = vaultData ? vaultData.performance24h : 0;
-  const userGains = latestPoint ? latestPoint.differential * userShares : 0; // For user
-  const vaultGains = totalVaultValue * performance24h; // Daily vault gain approximation
+  // Gains - calculate based on realistic APY, not anomalous share price changes
+  // The AAVE APY is ~4-5%, so daily gain should be tiny (APY / 365)
+  const currentApyDecimal = aaveAPY / 100; // e.g., 4.47% -> 0.0447
+  const dailyRate = currentApyDecimal / 365; // Daily rate, e.g., 0.000122
+  
+  // Calculate realistic daily gains based on current APY
+  const vaultGains = totalVaultValue * dailyRate; // Realistic daily gain
+  const userGains = userVaultValue * dailyRate; // User's portion of daily gain
 
   // Simplified logging for vault values
   if (userShares > 0) {
@@ -455,8 +459,8 @@ export function usePerformanceData() {
     totalVaultValue,
     vaultGains,
     sharePrice,
-    performance24h,
-    currentApy: performance24h * 365, // Annualized from 24h performance
+    dailyGainRate: dailyRate,
+    currentApy: currentApyDecimal, // Use actual AAVE APY
     
     // Controls
     days,
