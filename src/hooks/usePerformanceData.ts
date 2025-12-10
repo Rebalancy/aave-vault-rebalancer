@@ -218,13 +218,37 @@ export function usePerformanceData() {
     // Priority 1: Use backend performance data if available
     if (backendPerformanceData.length > 0) {
       console.log('📊 Using backend performance data:', backendPerformanceData.length, 'days');
-      return backendPerformanceData.map(point => ({
-        date: point.date,
-        vaultSharePrice: parseFloat(point.totalFundAllocationOptimized),
-        baselineValue: parseFloat(point.totalFundAllocationBaseline),
-        differential: parseFloat(point.differential),
-        differentialPercentage: point.differentialPercentage
-      }));
+      
+      // Find the first non-zero baseline value to use as normalization base
+      const firstNonZeroBaseline = backendPerformanceData.find(p => parseFloat(p.totalFundAllocationBaseline) > 0);
+      const baselineNorm = firstNonZeroBaseline ? parseFloat(firstNonZeroBaseline.totalFundAllocationBaseline) : 1;
+      
+      // Find the first non-zero optimized value
+      const firstNonZeroOptimized = backendPerformanceData.find(p => parseFloat(p.totalFundAllocationOptimized) > 0);
+      const optimizedNorm = firstNonZeroOptimized ? parseFloat(firstNonZeroOptimized.totalFundAllocationOptimized) : baselineNorm;
+      
+      // If all data is zeros, skip normalization and return empty for fallback
+      if (baselineNorm === 0 && optimizedNorm === 0) {
+        console.log('⚠️ Backend data has all zeros, using fallback');
+        // Fall through to other priorities
+      } else {
+        return backendPerformanceData.map(point => {
+          const rawOptimized = parseFloat(point.totalFundAllocationOptimized);
+          const rawBaseline = parseFloat(point.totalFundAllocationBaseline);
+          
+          // Normalize to start at 1.0 - treat 0 values as 1.0 (no change)
+          const normalizedOptimized = rawOptimized > 0 ? rawOptimized / optimizedNorm : 1.0;
+          const normalizedBaseline = rawBaseline > 0 ? rawBaseline / baselineNorm : 1.0;
+          
+          return {
+            date: point.date,
+            vaultSharePrice: normalizedOptimized,
+            baselineValue: normalizedBaseline,
+            differential: normalizedOptimized - normalizedBaseline,
+            differentialPercentage: normalizedBaseline > 0 ? ((normalizedOptimized - normalizedBaseline) / normalizedBaseline) * 100 : 0
+          };
+        });
+      }
     }
 
     // Priority 2: Use share price history if available
