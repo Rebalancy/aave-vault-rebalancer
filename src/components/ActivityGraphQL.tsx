@@ -63,7 +63,7 @@ const ActivityGraphQL = () => {
         </div>
 
         {/* Activity List - No borders, clean design */}
-        <div className="flex-1 p-4 pt-0 overflow-y-auto">
+        <div className="flex-1 p-4 pt-0 overflow-y-auto max-h-80">
           {activitiesLoading ? (
             <div className="flex items-center justify-center h-32">
               <div className="text-secondary">Loading activity...</div>
