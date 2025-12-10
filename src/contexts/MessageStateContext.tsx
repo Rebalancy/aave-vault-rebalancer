@@ -126,42 +126,66 @@ export const MessageStateProvider: React.FC<MessageStateProviderProps> = ({ chil
 
   // State management - run checks on page load and state changes
   useEffect(() => {
-    // Clear previous automatic messages
-    setActiveMessages(prev => prev.filter(msg => 
-      !['welcome', 'welcome-back'].includes(msg.category)
-    ));
-
     if (!isConnected || !address) {
-      // User not connected - no messages
+      // User not connected - clear welcome messages
+      setActiveMessages(prev => prev.filter(msg => 
+        !['welcome', 'welcome-back'].includes(msg.category)
+      ));
       return;
     }
 
     // Add a small delay to ensure state is fully settled before showing messages
     const timer = setTimeout(() => {
-      // Add welcome back message if applicable (user has deposits)
-      if (showWelcomeBack && hasDeposits && isConnected) {
-        addMessage({
-          type: 'idle',
-          category: 'welcome-back',
-          content: `Welcome back! You have earned ${yieldEarned} USDC yield since last time.`,
-          persistent: false,
-          priority: calculatePriority('idle', 'welcome-back'),
-        });
-      }
-      // Add welcome message if applicable (user has no deposits)
-      else if (showWelcome && !hasDeposits && isConnected) {
-        addMessage({
-          type: 'info',
-          category: 'welcome',
-          content: 'Welcome! Get started by depositing into the vault.',
-          persistent: false,
-          priority: calculatePriority('info', 'welcome'),
-        });
-      }
+      // Check if there are active transaction messages - don't override them with welcome
+      setActiveMessages(prev => {
+        const hasActiveTransactionMessages = prev.some(msg => 
+          ['deposit', 'withdraw', 'vault-shares'].includes(msg.category) &&
+          (msg.type === 'loading' || msg.type === 'success')
+        );
+        
+        // Don't add welcome messages if there are active transaction messages
+        if (hasActiveTransactionMessages) {
+          return prev;
+        }
+        
+        // Clear previous welcome messages
+        const filtered = prev.filter(msg => 
+          !['welcome', 'welcome-back'].includes(msg.category)
+        );
+        
+        // Add welcome back message if applicable (user has deposits)
+        if (showWelcomeBack && hasDeposits && isConnected) {
+          const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          return [...filtered, {
+            id,
+            type: 'idle' as MessageType,
+            category: 'welcome-back' as MessageCategory,
+            content: `Welcome back! You have earned ${yieldEarned} USDC yield since last time.`,
+            persistent: false,
+            priority: calculatePriority('idle', 'welcome-back'),
+            timestamp: Date.now(),
+          }].sort((a, b) => b.priority - a.priority);
+        }
+        // Add welcome message if applicable (user has no deposits)
+        else if (showWelcome && !hasDeposits && isConnected) {
+          const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          return [...filtered, {
+            id,
+            type: 'info' as MessageType,
+            category: 'welcome' as MessageCategory,
+            content: 'Welcome! Get started by depositing into the vault.',
+            persistent: false,
+            priority: calculatePriority('info', 'welcome'),
+            timestamp: Date.now(),
+          }].sort((a, b) => b.priority - a.priority);
+        }
+        
+        return filtered;
+      });
     }, 100); // Small delay to prevent flashing
 
     return () => clearTimeout(timer);
-  }, [isConnected, address, showWelcome, showWelcomeBack, hasDeposits, yieldEarned, addMessage]);
+  }, [isConnected, address, showWelcome, showWelcomeBack, hasDeposits, yieldEarned]);
 
   // Handle transaction messages from existing context
   useEffect(() => {
@@ -198,19 +222,20 @@ export const MessageStateProvider: React.FC<MessageStateProviderProps> = ({ chil
         type,
         category,
         content: txMsg.message,
-        persistent: type === 'loading', // Loading messages persist until completed
+        persistent: type === 'loading' || type === 'success', // Loading and success messages persist until user dismisses
         priority: calculatePriority(type, category),
       });
     });
   }, [transactionMessages, addMessage]);
 
-  // Auto-hide non-persistent messages after 5 seconds (except loading and welcome messages)
+  // Auto-hide non-persistent messages after 5 seconds (except loading, success, and welcome messages)
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
       setActiveMessages(prev => prev.filter(msg => 
         msg.persistent === true || 
         msg.type === 'loading' || 
+        msg.type === 'success' || // Success messages stay until user dismisses
         msg.category === 'welcome' ||
         msg.category === 'welcome-back' ||
         (now - msg.timestamp) < 5000 // 5 second auto-hide
