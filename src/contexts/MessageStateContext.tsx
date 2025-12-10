@@ -196,21 +196,27 @@ export const MessageStateProvider: React.FC<MessageStateProviderProps> = ({ chil
 
     // Add current transaction messages
     transactionMessages.forEach(txMsg => {
-      // Map transaction message to our message format
+      // Map transaction message type to our MessageType
+      // TransactionStatusContext uses: 'success' | 'error' | 'info' | 'pending'
       let type: MessageType = 'info';
-      let category: MessageCategory = 'deposit'; // default
-
-      // Determine type and category from transaction message
-      if (txMsg.message.includes('progress') || txMsg.message.includes('pending')) {
+      
+      // First, check the actual type from the transaction message
+      if (txMsg.type === 'pending') {
         type = 'loading';
-      } else if (txMsg.message.includes('successful') || txMsg.message.includes('confirmed')) {
+      } else if (txMsg.type === 'success') {
         type = 'success';
-      } else if (txMsg.message.includes('failed') || txMsg.message.includes('error')) {
+      } else if (txMsg.type === 'error') {
         type = 'error';
+      } else if (txMsg.type === 'info') {
+        // Fall back to keyword detection for info messages
+        if (txMsg.message.includes('progress') || txMsg.message.includes('pending') || txMsg.message.includes('signature')) {
+          type = 'loading';
+        }
       }
 
       // Determine category from message content
-      if (txMsg.message.toLowerCase().includes('deposit')) {
+      let category: MessageCategory = 'deposit'; // default
+      if (txMsg.message.toLowerCase().includes('deposit') || txMsg.message.toLowerCase().includes('signature')) {
         category = 'deposit';
       } else if (txMsg.message.toLowerCase().includes('withdraw')) {
         category = 'withdraw';
