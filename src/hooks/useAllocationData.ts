@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { createPublicClient, http, formatUnits } from 'viem';
+import { createPublicClient, http, formatUnits, type Chain } from 'viem';
 import { arbitrumSepolia, baseSepolia, optimismSepolia, sepolia } from 'viem/chains';
 import { useMockData } from '@/components/ClientProviders';
 import { AAVE_VAULT_ABI } from '@/utils/contracts';
@@ -21,7 +21,7 @@ interface ChainConfig {
   name: string;
   vaultAddress: string | null; // null if not deployed yet
   rpcUrl: string;
-  viemChain: typeof arbitrumSepolia;
+  viemChain: Chain;
 }
 
 const CHAIN_CONFIGS: ChainConfig[] = [
