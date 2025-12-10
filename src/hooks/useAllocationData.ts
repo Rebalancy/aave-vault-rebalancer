@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
+import { createPublicClient, http, formatUnits } from 'viem';
+import { arbitrumSepolia, baseSepolia, optimismSepolia, sepolia } from 'viem/chains';
 import { useMockData } from '@/components/ClientProviders';
-import { createNearContractReader, ChainAllocation } from '@/utils/nearContract';
+import { AAVE_VAULT_ABI } from '@/utils/contracts';
 
 export interface AllocationItem {
   name: string;
@@ -13,6 +15,46 @@ export interface AllocationItem {
   color: string;
 }
 
+// Chain configuration with vault addresses and RPC endpoints
+interface ChainConfig {
+  chainId: number;
+  name: string;
+  vaultAddress: string | null; // null if not deployed yet
+  rpcUrl: string;
+  viemChain: typeof arbitrumSepolia;
+}
+
+const CHAIN_CONFIGS: ChainConfig[] = [
+  {
+    chainId: 421614,
+    name: 'Arbitrum Sepolia',
+    vaultAddress: '0xE168d95f8d1B8EC167A63c8E696076EC8EE95337',
+    rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
+    viemChain: arbitrumSepolia
+  },
+  {
+    chainId: 84532,
+    name: 'Base Sepolia',
+    vaultAddress: null, // Not deployed yet
+    rpcUrl: 'https://sepolia.base.org',
+    viemChain: baseSepolia
+  },
+  {
+    chainId: 11155420,
+    name: 'Optimism Sepolia',
+    vaultAddress: null, // Not deployed yet
+    rpcUrl: 'https://sepolia.optimism.io',
+    viemChain: optimismSepolia
+  },
+  {
+    chainId: 11155111,
+    name: 'Ethereum Sepolia',
+    vaultAddress: null, // Not deployed yet
+    rpcUrl: 'https://rpc.sepolia.org',
+    viemChain: sepolia
+  }
+];
+
 const PROTOCOL_ICONS: Record<string, string> = {
   'ethereum': '/Chain=ETH.svg',
   'base': '/Chain=BASE.svg', 
@@ -21,7 +63,7 @@ const PROTOCOL_ICONS: Record<string, string> = {
   'arbitrum': '/arbitrum-arb-logo.svg',
   'optimism': '/optimism-ethereum-op-logo.svg',
   'binance': '/Chain=BNB.svg',
-  'near': '/Chain=ETH.svg', // Using ETH as fallback
+  'near': '/Chain=ETH.svg',
   // Testnets
   'localhost': '/Chain=ETH.svg',
   'base sepolia': '/Chain=BASE.svg',
@@ -47,29 +89,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
   'ethereum sepolia': '#627EEA'
 };
 
-const getChainName = (chainId: number): string => {
-  const chainNames: Record<number, string> = {
-    // Mainnets
-    1: 'Ethereum',
-    137: 'Polygon', 
-    43114: 'Avalanche',
-    8453: 'Base',
-    42161: 'Arbitrum',
-    10: 'Optimism',
-    56: 'Binance',
-    // Testnets
-    31337: 'Localhost',
-    84532: 'Base Sepolia',
-    421614: 'Arbitrum Sepolia', 
-    11155420: 'Optimism Sepolia',
-    11155111: 'Ethereum Sepolia',
-    111155111: 'Ethereum Sepolia'
-  };
-  return chainNames[chainId] || `Chain ${chainId}`;
-};
-
 const calculateEstimatedAPY = (protocol: string): number => {
-  // Estimate APY based on historical data for different protocols
   const apyEstimates: Record<string, number> = {
     'ethereum': 4.2,
     'base': 3.8,
@@ -79,7 +99,7 @@ const calculateEstimatedAPY = (protocol: string): number => {
     'optimism': 3.2,
     'binance': 5.1,
     'near': 7.2,
-    // Testnets (using similar rates as mainnets)
+    // Testnets
     'localhost': 3.5,
     'base sepolia': 3.8,
     'arbitrum sepolia': 3.5,
@@ -89,39 +109,38 @@ const calculateEstimatedAPY = (protocol: string): number => {
   return apyEstimates[protocol.toLowerCase()] || 3.5;
 };
 
-const formatAmount = (amount: string): number => {
-  try {
-    // Convert from wei/smallest unit to readable format
-    const bigIntAmount = BigInt(amount);
-    const result = Number(bigIntAmount) / 1e18;
-    
-    // For very small amounts (likely test data), treat non-zero as meaningful
-    if (result > 0 && result < 1e-10) {
-      return Number(bigIntAmount); // Return raw amount for test data
-    }
-    
-    return result;
-  } catch {
-    return 0;
+// Read vault totalAssets directly from the chain
+async function getVaultBalance(config: ChainConfig): Promise<{ chainId: number; balance: bigint }> {
+  if (!config.vaultAddress) {
+    return { chainId: config.chainId, balance: 0n };
   }
-};
 
-// Get all supported chains that should be displayed
-const getAllSupportedChains = (): number[] => {
-  return [
-    84532,     // Base Sepolia
-    421614,    // Arbitrum Sepolia  
-    11155420,  // Optimism Sepolia
-    111155111, // Ethereum Sepolia (actual chain ID from contract)
-  ];
-};
+  try {
+    const client = createPublicClient({
+      chain: config.viemChain,
+      transport: http(config.rpcUrl)
+    });
+
+    const totalAssets = await client.readContract({
+      address: config.vaultAddress as `0x${string}`,
+      abi: AAVE_VAULT_ABI,
+      functionName: 'totalAssets'
+    }) as bigint;
+
+    console.log(`📊 ${config.name} vault totalAssets: ${totalAssets.toString()}`);
+    return { chainId: config.chainId, balance: totalAssets };
+  } catch (error) {
+    console.error(`❌ Failed to read ${config.name} vault:`, error);
+    return { chainId: config.chainId, balance: 0n };
+  }
+}
 
 export const useAllocationData = () => {
   const [allocations, setAllocations] = useState<AllocationItem[]>([]);
   const [totalValue, setTotalValue] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const { useMock } = useMockData();
 
   useEffect(() => {
@@ -130,227 +149,94 @@ export const useAllocationData = () => {
       setError(null);
 
       try {
-        console.log('🔍 Fetching allocation data...');
+        console.log('🔍 Fetching allocation data directly from vault contracts...');
         
         // If mock is enabled, return varied allocations
         if (useMock) {
           const mock: AllocationItem[] = [
-            { name: 'Ethereum', icon: PROTOCOL_ICONS['ethereum'], apy: 4.7, allocation: 44, color: PROTOCOL_COLORS['ethereum'] },
-            { name: 'Arbitrum Sepolia', icon: PROTOCOL_ICONS['arbitrum sepolia'], apy: 4.0, allocation: 27, color: PROTOCOL_COLORS['arbitrum sepolia'] },
-            { name: 'Base Sepolia', icon: PROTOCOL_COLORS['base sepolia'] ? PROTOCOL_ICONS['base sepolia'] : PROTOCOL_ICONS['base'], apy: 3.3, allocation: 14, color: PROTOCOL_COLORS['base sepolia'] || PROTOCOL_COLORS['base'] },
-            { name: 'Optimism Sepolia', icon: PROTOCOL_ICONS['optimism sepolia'], apy: 3.3, allocation: 15, color: PROTOCOL_COLORS['optimism sepolia'] },
+            { name: 'Ethereum Sepolia', icon: PROTOCOL_ICONS['ethereum sepolia'], apy: 4.2, allocation: 44, color: PROTOCOL_COLORS['ethereum sepolia'] },
+            { name: 'Arbitrum Sepolia', icon: PROTOCOL_ICONS['arbitrum sepolia'], apy: 3.5, allocation: 27, color: PROTOCOL_COLORS['arbitrum sepolia'] },
+            { name: 'Base Sepolia', icon: PROTOCOL_ICONS['base sepolia'], apy: 3.8, allocation: 14, color: PROTOCOL_COLORS['base sepolia'] },
+            { name: 'Optimism Sepolia', icon: PROTOCOL_ICONS['optimism sepolia'], apy: 3.2, allocation: 15, color: PROTOCOL_COLORS['optimism sepolia'] },
           ].sort((a,b) => b.allocation - a.allocation);
           setAllocations(mock);
           setTotalValue(1234567);
           return;
         }
 
-        // Fetch NEAR allocation data first (this is the primary source now)
-        const nearData = await fetchNearAllocationData();
+        // Read balances directly from each chain's vault contract
+        console.log('📡 Reading vault balances from each chain...');
+        const balancePromises = CHAIN_CONFIGS.map(config => getVaultBalance(config));
+        const balanceResults = await Promise.all(balancePromises);
         
-        if (nearData) {
-          console.log('✅ Using NEAR contract allocation data');
-          setAllocations(nearData.allocations);
-          setTotalValue(nearData.totalValue);
-          return;
-        }
+        // Calculate total across all vaults (USDC has 6 decimals)
+        const totalRaw = balanceResults.reduce((sum, result) => sum + result.balance, 0n);
+        const totalUSDC = Number(formatUnits(totalRaw, 6)); // USDC has 6 decimals
+        
+        console.log(`💰 Total value across all vaults: ${totalUSDC} USDC`);
 
-        // Fallback: Show all supported chains 
-        console.log('⚠️ NEAR contract data not available, showing supported chains');
-        const supportedChains = getAllSupportedChains();
-        
-        const fallbackAllocations: AllocationItem[] = supportedChains.map((chainId) => {
-          const chainName = getChainName(chainId);
+        // Build allocation items
+        const allocationItems: AllocationItem[] = CHAIN_CONFIGS.map(config => {
+          const result = balanceResults.find(r => r.chainId === config.chainId);
+          const balance = result?.balance || 0n;
+          const balanceUSDC = Number(formatUnits(balance, 6));
+          
+          // Calculate percentage (handle 0 total case)
+          let allocationPercent = 0;
+          if (totalRaw > 0n) {
+            // Use bigint math to avoid precision loss
+            allocationPercent = Number((balance * 100n) / totalRaw);
+          }
+          
+          const chainNameLower = config.name.toLowerCase();
+          
+          console.log(`🎯 ${config.name}: ${balanceUSDC} USDC (${allocationPercent}%)`);
+          
           return {
-            name: chainName,
-            icon: PROTOCOL_ICONS[chainName.toLowerCase()] || chainName[0]?.toUpperCase() || '?',
-            apy: calculateEstimatedAPY(chainName),
-            allocation: 0,
-            color: PROTOCOL_COLORS[chainName.toLowerCase()] || '#666666'
+            name: config.name,
+            icon: PROTOCOL_ICONS[chainNameLower] || '/Chain=ETH.svg',
+            apy: calculateEstimatedAPY(config.name),
+            allocation: allocationPercent,
+            color: PROTOCOL_COLORS[chainNameLower] || '#666666'
           };
         });
+
+        // Sort by allocation (highest first)
+        const sortedAllocations = allocationItems.sort((a, b) => b.allocation - a.allocation);
         
-        // Sort fallback allocations by allocation percentage (highest to lowest)
-        const sortedFallbackAllocations = fallbackAllocations.sort((a, b) => b.allocation - a.allocation);
-        
-        setAllocations(sortedFallbackAllocations);
-        setTotalValue(0);
+        console.log('✅ Final allocation data:', {
+          totalValue: totalUSDC,
+          allocations: sortedAllocations
+        });
+
+        setAllocations(sortedAllocations);
+        setTotalValue(totalUSDC);
 
       } catch (err) {
         console.error('💥 Error in fetchAllocationData:', err);
         setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        
+        // Set fallback data showing all chains with 0%
+        const fallbackAllocations: AllocationItem[] = CHAIN_CONFIGS.map(config => ({
+          name: config.name,
+          icon: PROTOCOL_ICONS[config.name.toLowerCase()] || '/Chain=ETH.svg',
+          apy: calculateEstimatedAPY(config.name),
+          allocation: 0,
+          color: PROTOCOL_COLORS[config.name.toLowerCase()] || '#666666'
+        }));
+        setAllocations(fallbackAllocations);
+        setTotalValue(0);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchAllocationData();
-  }, [isConnected, address, useMock]);
-
-  const fetchNearAllocationData = async () => {
-    try {
-      console.log('🔍 Attempting to fetch NEAR allocation data from rebalancer-10.testnet...');
-      const nearReader = createNearContractReader();
-      
-      // First test the connection
-      console.log('🔗 Testing NEAR RPC connection...');
-      const connectionTest = await nearReader.testConnection();
-      
-      if (!connectionTest) {
-        console.log('❌ NEAR RPC connection failed, skipping allocation fetch');
-        return null;
-      }
-      
-      // Fetch allocation data using the new get_allocations method
-      console.log('📞 Calling get_allocations method...');
-      const chainAllocations = await nearReader.getAllocations().catch((error) => {
-        console.error('❌ get_allocations failed:', error);
-        console.error('❌ Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-        return null;
-      });
-
-      console.log('📋 getAllocations response:', chainAllocations);
-
-      // Get all supported chains
-      const supportedChains = getAllSupportedChains();
-      const formattedAllocations: AllocationItem[] = [];
-      let totalValue = 0;
-
-      // Process NEAR contract allocation data
-      if (chainAllocations && Array.isArray(chainAllocations) && chainAllocations.length > 0) {
-        console.log('📊 Raw chain allocations:', chainAllocations);
-        
-        // First, calculate total value from all allocations
-        chainAllocations.forEach((allocation: ChainAllocation) => {
-          const amount = formatAmount(allocation.amount);
-          totalValue += amount;
-          console.log(`📈 Chain ${allocation.chainId}: ${allocation.amount} raw -> ${amount} formatted`);
-        });
-
-        console.log(`💰 Total value across all chains: ${totalValue}`);
-
-        // Calculate raw total for better test data handling
-        const rawTotal = chainAllocations.reduce((sum, ca) => sum + Number(ca.amount), 0);
-        console.log(`📊 Raw total: ${rawTotal}, Formatted total: ${totalValue}`);
-        
-        // Use raw amounts for calculation if total is very small (likely test data)
-        const useRawAmounts = totalValue < 1e-10 && rawTotal > 0;
-        console.log(`🔄 Using ${useRawAmounts ? 'raw' : 'formatted'} amounts for allocation calculation`);
-
-        // Create allocation items for ALL supported chains
-        supportedChains.forEach(chainId => {
-          const chainName = getChainName(chainId);
-          
-          // Find allocation data for this chain
-          const chainAllocation = chainAllocations.find((ca: ChainAllocation) => ca.chainId === chainId);
-          
-          let allocationPercent = 0;
-          if (chainAllocation) {
-            if (useRawAmounts) {
-              // Use raw amounts for test data
-              const rawAmount = Number(chainAllocation.amount);
-              allocationPercent = rawTotal > 0 ? Math.round((rawAmount / rawTotal) * 100) : 0;
-            } else {
-              // Use formatted amounts for real data
-              const amount = formatAmount(chainAllocation.amount);
-              allocationPercent = totalValue > 0 ? Math.round((amount / totalValue) * 100) : 0;
-            }
-          }
-
-          formattedAllocations.push({
-            name: chainName,
-            icon: PROTOCOL_ICONS[chainName.toLowerCase()] || chainName[0]?.toUpperCase() || '?',
-            apy: calculateEstimatedAPY(chainName),
-            allocation: allocationPercent,
-            color: PROTOCOL_COLORS[chainName.toLowerCase()] || '#666666'
-          });
-
-          console.log(`🎯 ${chainName} (${chainId}): ${allocationPercent}% allocation`);
-        });
-
-        // Sort allocations by allocation percentage (highest to lowest)
-        const sortedAllocations = formattedAllocations.sort((a, b) => b.allocation - a.allocation);
-        
-        console.log('✅ Final allocation data:', {
-          totalValue,
-          allocations: sortedAllocations
-        });
-
-        return {
-          allocations: sortedAllocations,
-          totalValue: Math.round(totalValue)
-        };
-      }
-
-      // Try to get activity logs as fallback
-      console.log('📋 Trying to fetch activity logs as fallback...');
-      const activityLogs = await nearReader.getLatestLogs(20).catch((error) => {
-        console.log('❌ get_latest_logs failed:', error.message);
-        return null;
-      });
-
-      if (activityLogs && Array.isArray(activityLogs) && activityLogs.length > 0) {
-        console.log('📋 Processing activity logs for allocation data...');
-        
-        // Analyze activity logs to derive allocation information
-        const chainActivity = new Map<number, { totalAmount: number, count: number }>();
-        let totalValue = 0;
-
-        activityLogs.forEach((log, index) => {
-          console.log(`📝 Processing log ${index}:`, log);
-          
-          if (log.actual_amount || log.expected_amount) {
-            const amount = formatAmount(log.actual_amount || log.expected_amount);
-            
-            // Count activity for both source and destination chains
-            [log.source_chain, log.destination_chain].forEach(chainId => {
-              if (chainId) {
-                const existing = chainActivity.get(chainId) || { totalAmount: 0, count: 0 };
-                existing.totalAmount += amount;
-                existing.count += 1;
-                chainActivity.set(chainId, existing);
-                totalValue += amount;
-              }
-            });
-          }
-        });
-
-        if (chainActivity.size > 0) {
-          // Convert to allocation percentages
-          const activityAllocations: AllocationItem[] = Array.from(chainActivity.entries()).map(([chainId, data]) => {
-            const chainName = getChainName(chainId);
-            return {
-              name: chainName,
-              icon: PROTOCOL_ICONS[chainName.toLowerCase()] || chainName[0]?.toUpperCase() || '?',
-              apy: calculateEstimatedAPY(chainName),
-              allocation: totalValue > 0 ? Math.round((data.totalAmount / totalValue) * 100) : 0,
-              color: PROTOCOL_COLORS[chainName.toLowerCase()] || '#666666'
-            };
-          });
-
-          // Sort allocations by allocation percentage (highest to lowest)
-          const sortedActivityAllocations = activityAllocations.sort((a, b) => b.allocation - a.allocation);
-          
-          console.log('🎉 Using allocation data derived from activity logs!');
-          return {
-            allocations: sortedActivityAllocations,
-            totalValue: Math.round(totalValue) || 1450000
-          };
-        }
-      }
-
-      console.log('⚠️ No allocation data found in contract');
-      return null;
-
-    } catch (error) {
-      console.error('💥 Error fetching NEAR allocation data:', error);
-      return null;
-    }
-  };
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchAllocationData, 30000);
+    return () => clearInterval(interval);
+  }, [isConnected, useMock]);
 
   return {
     allocations,
