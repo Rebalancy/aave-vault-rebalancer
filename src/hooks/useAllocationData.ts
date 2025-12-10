@@ -112,7 +112,7 @@ const calculateEstimatedAPY = (protocol: string): number => {
 // Read vault totalAssets directly from the chain
 async function getVaultBalance(config: ChainConfig): Promise<{ chainId: number; balance: bigint }> {
   if (!config.vaultAddress) {
-    return { chainId: config.chainId, balance: 0n };
+    return { chainId: config.chainId, balance: BigInt(0) };
   }
 
   try {
@@ -131,7 +131,7 @@ async function getVaultBalance(config: ChainConfig): Promise<{ chainId: number; 
     return { chainId: config.chainId, balance: totalAssets };
   } catch (error) {
     console.error(`❌ Failed to read ${config.name} vault:`, error);
-    return { chainId: config.chainId, balance: 0n };
+    return { chainId: config.chainId, balance: BigInt(0) };
   }
 }
 
@@ -170,7 +170,7 @@ export const useAllocationData = () => {
         const balanceResults = await Promise.all(balancePromises);
         
         // Calculate total across all vaults (USDC has 6 decimals)
-        const totalRaw = balanceResults.reduce((sum, result) => sum + result.balance, 0n);
+        const totalRaw = balanceResults.reduce((sum, result) => sum + result.balance, BigInt(0));
         const totalUSDC = Number(formatUnits(totalRaw, 6)); // USDC has 6 decimals
         
         console.log(`💰 Total value across all vaults: ${totalUSDC} USDC`);
@@ -178,14 +178,14 @@ export const useAllocationData = () => {
         // Build allocation items
         const allocationItems: AllocationItem[] = CHAIN_CONFIGS.map(config => {
           const result = balanceResults.find(r => r.chainId === config.chainId);
-          const balance = result?.balance || 0n;
+          const balance = result?.balance || BigInt(0);
           const balanceUSDC = Number(formatUnits(balance, 6));
           
           // Calculate percentage (handle 0 total case)
           let allocationPercent = 0;
-          if (totalRaw > 0n) {
+          if (totalRaw > BigInt(0)) {
             // Use bigint math to avoid precision loss
-            allocationPercent = Number((balance * 100n) / totalRaw);
+            allocationPercent = Number((balance * BigInt(100)) / totalRaw);
           }
           
           const chainNameLower = config.name.toLowerCase();
