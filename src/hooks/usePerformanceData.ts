@@ -338,9 +338,6 @@ export function usePerformanceData() {
     });
   })();
 
-  // Calculate summary stats
-  const latestPoint = performanceData[performanceData.length - 1];
-  
   // Calculate user's personal vault value based on their shares
   // ERC4626 shares typically have the same decimals as the underlying asset (6 for USDC)
   const userShares = userShareBalance ? Number(formatUnits(userShareBalance as bigint, 6)) : 0;
