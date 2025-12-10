@@ -3,18 +3,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { AAVE_VAULT_ABI, getContractAddress } from '@/utils/contracts';
-import { useQuery, gql } from '@apollo/client';
-
-// GraphQL query for vault data to get performance
-const GET_VAULT_DATA = gql`
-  query GetVaultData($chainName: String!) {
-    vaultData(chainName: $chainName) {
-      performance24h
-      sharePrice
-      totalAssets
-    }
-  }
-`;
 
 interface WelcomeContextType {
   showWelcome: boolean;
@@ -73,14 +61,6 @@ export const WelcomeProvider: React.FC<WelcomeProviderProps> = ({ children }) =>
     },
   });
 
-  // Query vault performance data
-  const { data: vaultData } = useQuery(GET_VAULT_DATA, {
-    variables: { chainName: 'arbitrumSepolia' },
-    skip: !isConnected || !hasDeposits,
-    errorPolicy: 'all'
-  });
-
-
   // Update hasDeposits based on vault shares
   useEffect(() => {
     if (vaultShares !== undefined && address) {
@@ -113,22 +93,24 @@ export const WelcomeProvider: React.FC<WelcomeProviderProps> = ({ children }) =>
       return;
     }
 
-    // Calculate lifetime yield earned
+    // Calculate realistic yield based on AAVE APY instead of anomalous share price
     if (vaultShares) {
-      const sharePrice = vaultData?.vaultData?.sharePrice || 1;
       const userShares = Number(vaultShares) / 1e6; // Convert from wei to USDC (6 decimals)
-      const currentValue = userShares * sharePrice;
-      const originalDeposit = userShares; // Assumes initial share price was ~1
-      const totalYield = Math.max(0, currentValue - originalDeposit);
       
-      setYieldEarned(Math.round(totalYield * 100) / 100); // Round to 2 decimals
+      // Use realistic AAVE APY (~4.5%) instead of backend sharePrice which may be anomalous
+      // Calculate daily yield: (userValue * APY) / 365
+      const AAVE_APY = 0.045; // 4.5% APY
+      const dailyYield = (userShares * AAVE_APY) / 365;
+      
+      // Round to 2 decimals
+      setYieldEarned(Math.round(dailyYield * 100) / 100);
       setShowWelcomeBack(true);
     } else {
       // No shares, no yield
       setYieldEarned(0);
       setShowWelcomeBack(false);
     }
-  }, [address, isConnected, hasDeposits, vaultData, vaultShares]);
+  }, [address, isConnected, hasDeposits, vaultShares]);
 
   const dismissWelcome = () => {
     // Just a placeholder - welcome will show again if user still has no deposits
