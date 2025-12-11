@@ -9,6 +9,7 @@ import { ApolloProvider } from '@apollo/client';
 import React, { createContext, useContext } from 'react';
 import { apolloClient } from '../lib/apollo-client';
 import '@rainbow-me/rainbowkit/styles.css';
+import TermsModal from './TermsModal';
 
 // Wagmi configuration - using WalletConnect Project ID from environment
 const config = getDefaultConfig({
@@ -72,6 +73,7 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
           <RainbowKitProvider>
             <MockDataContext.Provider value={{ useMock, setUseMock }}>
               {children}
+              <TermsModal />
             </MockDataContext.Provider>
           </RainbowKitProvider>
         </ApolloProvider>
