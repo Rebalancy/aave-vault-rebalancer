@@ -85,7 +85,7 @@ export const EthereumWalletConnection: React.FC = () => {
 
                   // COMPACT one-line card matching Figma
                   const usdcNum = usdcBalance ? parseFloat(formatUnits(usdcBalance as bigint, 6)) : 0;
-                  const usdcFormatted = usdcBalance ? usdcNum.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '';
+                  const usdcFormatted = usdcNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                   return (
                     <div>
                       <button

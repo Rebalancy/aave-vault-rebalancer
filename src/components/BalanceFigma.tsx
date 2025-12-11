@@ -546,6 +546,7 @@ export const BalanceFigma = () => {
     // WriteContract errors (tx submission failed)
     if (usdcWriteError && depositStep === 'approving') {
       console.log('⚠️ [BUILD v5.7] USDC write error:', usdcWriteError.message);
+      removeMessage('deposit-approving'); // Clear the approving message on error
       
       if (isUserRejection(usdcWriteError)) {
         setDepositStep('error');
