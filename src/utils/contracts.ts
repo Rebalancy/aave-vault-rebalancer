@@ -10,7 +10,7 @@ export const CONTRACT_ADDRESSES = {
 // USDC contract addresses for different networks
 export const USDC_ADDRESSES = {
   localhost: '0x16f18Ee01365Ef23E0564dfB635215A5B4Eaa3c4', // MockUSDC for local testing
-  ethereum: '0xA0b86a33E6441E43941295AaE15D29a6E6e98959', // USDC on Ethereum mainnet  
+  ethereum: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on Ethereum mainnet  
   baseSepolia: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Circle's official USDC on Base Sepolia testnet
   arbitrumSepolia: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Circle's official USDC on Arbitrum Sepolia testnet
   optimismSepolia: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // Circle's official USDC on Optimism Sepolia testnet
