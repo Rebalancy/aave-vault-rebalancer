@@ -12,9 +12,15 @@ export const MetaMaskWarning = () => {
   const [dismissed, setDismissed] = useState(false);
 
   // Check if using MetaMask on Arbitrum Sepolia
-  const isMetaMask = connector?.name?.toLowerCase().includes('metamask');
+  // RainbowKit/wagmi may use 'MetaMask', 'metamask', or the connector id
+  const connectorName = connector?.name?.toLowerCase() || '';
+  const connectorId = (connector?.id || '').toLowerCase();
+  const isMetaMask = connectorName.includes('metamask') || connectorId.includes('metamask') || connectorId === 'io.metamask';
   const isArbitrumSepolia = chainId === ARBITRUM_SEPOLIA_CHAIN_ID;
   const shouldShowWarning = isConnected && isMetaMask && isArbitrumSepolia && !dismissed;
+  
+  // Debug logging (remove in production)
+  console.log('🦊 MetaMask Warning Check:', { connectorName, connectorId, isMetaMask, chainId, isArbitrumSepolia, shouldShowWarning });
 
   if (!shouldShowWarning) return null;
 
