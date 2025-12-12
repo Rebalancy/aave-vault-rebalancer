@@ -18,9 +18,6 @@ export const MetaMaskWarning = () => {
   const isMetaMask = connectorName.includes('metamask') || connectorId.includes('metamask') || connectorId === 'io.metamask';
   const isArbitrumSepolia = chainId === ARBITRUM_SEPOLIA_CHAIN_ID;
   const shouldShowWarning = isConnected && isMetaMask && isArbitrumSepolia && !dismissed;
-  
-  // Debug logging (remove in production)
-  console.log('🦊 MetaMask Warning Check:', { connectorName, connectorId, isMetaMask, chainId, isArbitrumSepolia, shouldShowWarning });
 
   if (!shouldShowWarning) return null;
 
@@ -32,9 +29,7 @@ export const MetaMaskWarning = () => {
           <div className="flex-1 min-w-0">
             <h4 className="text-yellow-200 font-medium text-sm">MetaMask + Arbitrum Sepolia</h4>
             <p className="text-yellow-100/80 text-xs mt-1 leading-relaxed">
-              MetaMask&apos;s transaction simulation doesn&apos;t support Arbitrum Sepolia. 
-              Transactions may show as &quot;failed&quot; in the preview but will still succeed on-chain. 
-              You can safely proceed with transactions.
+              This demo is running on Arbitrum Sepolia. MetaMask&apos;s transaction simulation doesn&apos;t fully support this network, so it may show your transactions as failed even when they&apos;ve actually succeeded. If in doubt, please double-check the status on the block explorer.
             </p>
           </div>
           <button
