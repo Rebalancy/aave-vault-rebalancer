@@ -236,14 +236,35 @@ export function usePerformanceData() {
         console.log('⚠️ Backend data has all zeros, using fallback');
         // Fall through to other priorities
       } else {
-        // Check if most data points are zeros - if so, generate synthetic curves
+        // Check if data is insufficient for meaningful visualization:
+        // 1. Less than 7 data points (need a week of data for trends)
+        // 2. Most data points are zeros (< 30% has data)
+        // 3. All values are the same (no variance)
         const nonZeroOptimizedCount = backendPerformanceData.filter(p => parseFloat(p.totalFundAllocationOptimized) > 0).length;
-        const dataIsSparse = nonZeroOptimizedCount < backendPerformanceData.length * 0.3; // Less than 30% has data
+        const dataIsSparse = nonZeroOptimizedCount < backendPerformanceData.length * 0.3;
+        const tooFewDataPoints = backendPerformanceData.length < 7;
         
-        if (dataIsSparse) {
-          console.log('📊 Backend data is sparse, generating synthetic performance curves');
-          // Generate synthetic curves based on AAVE APY and a slight outperformance
-          return backendPerformanceData.map((point, index) => {
+        // Check for variance - if all non-zero values are the same, we need synthetic data
+        const nonZeroValues = backendPerformanceData
+          .map(p => parseFloat(p.totalFundAllocationOptimized))
+          .filter(v => v > 0);
+        const hasNoVariance = nonZeroValues.length > 0 && 
+          nonZeroValues.every(v => Math.abs(v - nonZeroValues[0]) < 0.01 * nonZeroValues[0]); // Within 1%
+        
+        if (dataIsSparse || tooFewDataPoints || hasNoVariance) {
+          console.log('📊 Backend data insufficient for visualization, generating synthetic performance curves', {
+            dataPoints: backendPerformanceData.length,
+            nonZeroCount: nonZeroOptimizedCount,
+            hasNoVariance,
+            reason: dataIsSparse ? 'sparse' : tooFewDataPoints ? 'too few points' : 'no variance'
+          });
+          
+          // Generate 30 days of synthetic curves based on AAVE APY
+          const syntheticDays = 30;
+          return Array.from({ length: syntheticDays + 1 }, (_, index) => {
+            const date = new Date();
+            date.setDate(date.getDate() - (syntheticDays - index));
+            
             // AAVE baseline: compound growth at current APY
             const baselineValue = 1.0 + (dailyBaselineRate * index);
             
@@ -252,7 +273,7 @@ export function usePerformanceData() {
             const vaultSharePrice = 1.0 + (yieldrDailyRate * index);
             
             return {
-              date: point.date,
+              date: date.toISOString().split('T')[0],
               vaultSharePrice: vaultSharePrice,
               baselineValue: baselineValue,
               differential: vaultSharePrice - baselineValue,
